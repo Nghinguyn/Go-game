@@ -1,0 +1,8 @@
+- Create a grid board for Go 
+- Cursor (Where the stone will be placed, how to track)
+- 
+- Application
+git (upload py file)
+python language
+
+Layout: 2 portions: the side bard
