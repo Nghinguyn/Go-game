@@ -1,19 +1,68 @@
 import sys
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, 
-                            QPushButton, QVBoxLayout)
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel,
+                            QPushButton, QVBoxLayout, QStackedWidget)
 from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QTimer, QPointF
-from PyQt6.QtGui import QFont, QColor, QPalette, QPainter, QPen, QBrush, QPainterPath
+from PyQt6.QtGui import QFont, QColor, QPalette, QPainter, QPen, QBrush, QPainterPath, QRadialGradient
 import random, math
 
 
 class BackgroundWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_PaintOnScreen)
+
+
+        self.setUpdatesEnabled(True)
+        
+        # Initialize with default positions first
+        self.stones = []
+        self.lower()
+        
+        # Set up 120fps timer
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_animation)
+        self.timer.start(1000 // 120)  # 120 FPS (approximately 8.33ms per frame)
+        self.time = 0.0
+        self.delta_time = 1.0 / 120.0  # Time delta for 120fps
+        
+        # Initial size
+        self.setMinimumSize(800, 600)
+
+
+    
+            
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.stones:
+            for _ in range(20):  # Reduced number of stones
+                x = random.randint(30, max(30, self.width() - 30))
+                y = random.randint(30, max(30, self.height() - 30))
+                is_black = random.choice([True, False])
+                self.stones.append(Stone(x, y, is_black))
+    
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Redistribute stones when window is resized
+        if self.stones:  # Only redistribute if we have stones
+            for stone in self.stones:
+                stone.pos = QPointF(
+                    random.randint(30, max(30, self.width() - 30)),
+                    random.randint(30, max(30, self.height() - 30))
+                )
+        
+    def update_animation(self):
+        self.time += self.delta_time
+        for stone in self.stones:
+            stone.update(self.time)
+        self.update()  # Trigger repaint
+
         
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         
         # Draw background
         painter.fillRect(self.rect(), QColor(44, 62, 80))
@@ -30,24 +79,54 @@ class BackgroundWidget(QWidget):
         for i in range(0, self.height(), spacing):
             painter.drawLine(0, i, self.width(), i)
             
-        # Draw some Go stones as decoration
-        stones = [
-            (100, 100), (300, 200), (500, 300),
-            (200, 400), (600, 150), (400, 450)
-        ]
-        
-        for x, y in stones:
-            # Draw stone shadows
+        # Draw animated stones
+        for stone in self.stones:
+            x = stone.pos.x()
+            y = stone.pos.y()
+            
+            # Draw stone shadow
             painter.setBrush(QBrush(QColor(0, 0, 0, 40)))
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(x-15, y-15, 34, 34)
+            painter.drawEllipse(int(x-15), int(y-15), 34, 34)
             
-            # Draw stones (alternating black and white)
-            if (x + y) % 2 == 0:
-                painter.setBrush(QBrush(QColor(50, 50, 50)))
-            else:
-                painter.setBrush(QBrush(QColor(240, 240, 240)))
-            painter.drawEllipse(x-17, y-17, 34, 34)
+            # Draw stone
+            color = QColor(50, 50, 50) if stone.is_black else QColor(240, 240, 240)
+            painter.setBrush(QBrush(color))
+            painter.drawEllipse(int(x-17), int(y-17), 34, 34)
+
+            self.draw_stone(painter, stone.pos.x(), stone.pos.y(), stone.is_black)
+
+    def draw_stone(self, painter, x, y, is_black):
+        # Create gradients for the stone
+        if is_black:
+            gradient = QRadialGradient(x-5, y-5, 20)
+            gradient.setColorAt(0, QColor(80, 80, 80))
+            gradient.setColorAt(0.5, QColor(20, 20, 20))
+            gradient.setColorAt(1, QColor(0, 0, 0))
+        else:
+            gradient = QRadialGradient(x-5, y-5, 20)
+            gradient.setColorAt(0, QColor(255, 255, 255))
+            gradient.setColorAt(0.5, QColor(240, 240, 240))
+            gradient.setColorAt(1, QColor(210, 210, 210))
+
+        # Draw shadow with blur effect
+        shadow_gradient = QRadialGradient(x+2, y+2, 19)
+        shadow_gradient.setColorAt(0, QColor(0, 0, 0, 60))
+        shadow_gradient.setColorAt(1, QColor(0, 0, 0, 10))
+        painter.setBrush(shadow_gradient)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(int(x-15), int(y-15), 34, 34)
+
+        # Draw the stone with gradient
+        painter.setBrush(gradient)
+        painter.drawEllipse(int(x-17), int(y-17), 34, 34)
+
+        # Add highlight/reflection
+        highlight = QPainterPath()
+        highlight.addEllipse(QPointF(x-7, y-7), 8, 8)
+        painter.setBrush(QColor(255, 255, 255, 90))
+        painter.drawPath(highlight)
+
 
 class LogoWidget(QWidget):
     def __init__(self, parent=None):
@@ -118,17 +197,19 @@ class MainWindow(QMainWindow):
 
     def initUI(self):
         self.setWindowTitle('Go Game')
-        self.setFixedSize(800, 600)
+        self.showFullScreen()
         
-        # Create background widget
-        background = BackgroundWidget(self)
-        background.setGeometry(0, 0, 800, 600)
+        # Create stacked widget to manage different screens
+        self.stacked_widget = QStackedWidget()
+        self.setCentralWidget(self.stacked_widget)
         
-        # Central widget
-        central = QWidget(self)
-        self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
-        layout.setSpacing(20)
+        # Create menu screen
+        self.menu_screen = QWidget()
+        menu_layout = QVBoxLayout(self.menu_screen)
+        
+        # Background for menu
+        self.background = BackgroundWidget(self.menu_screen)
+        self.background.setGeometry(0, 0, self.width(), self.height())
         
         # Logo
         logo = LogoWidget()
@@ -151,97 +232,172 @@ class MainWindow(QMainWindow):
         exit_btn = AnimatedButton("EXIT", "rgb(231, 76, 60)")
         
         # Layout
-        layout.addStretch()
-        layout.addWidget(logo, alignment=Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title, alignment=Qt.AlignmentFlag.AlignCenter)
-        layout.addSpacing(30)
-        layout.addWidget(start_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(settings_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(exit_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-        layout.addStretch()
+        menu_layout.addStretch()
+        menu_layout.addWidget(logo, alignment=Qt.AlignmentFlag.AlignCenter)
+        menu_layout.addWidget(title, alignment=Qt.AlignmentFlag.AlignCenter)
+        menu_layout.addSpacing(30)
+        menu_layout.addWidget(start_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        menu_layout.addWidget(settings_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        menu_layout.addWidget(exit_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        menu_layout.addStretch()
+        
+        # Create game screen
+        self.game_screen = GameBoard()
+        
+        # Add screens to stacked widget
+        self.stacked_widget.addWidget(self.menu_screen)
+        self.stacked_widget.addWidget(self.game_screen)
         
         # Connect buttons
-        start_btn.clicked.connect(lambda: print("Game Starting..."))
+        start_btn.clicked.connect(self.start_game)
         settings_btn.clicked.connect(lambda: print("Opening Settings..."))
         exit_btn.clicked.connect(self.close)
+        
+        
+        # Create background widget first
+        self.background = BackgroundWidget(self.menu_screen)
+        self.background.setGeometry(0, 0, self.width(), self.height())
+        
+        # Create logo and buttons AFTER background
+        # This ensures they're created on top of the background
+        self.logo = QLabel(self.menu_screen)
+        # ... logo setup ...
+        
+        
+        
+        
+
+    def start_game(self):
+        self.stacked_widget.setCurrentWidget(self.game_screen)
 
 
-class Stone:
-    def __init__(self, x, y, is_black):
-        self.pos = QPointF(x, y)
-        self.initial_pos = QPointF(x, y)
-        self.is_black = is_black
-        self.phase = random.uniform(0, 2 * 3.14159)
-        self.amplitude = random.uniform(10, 30)
-        self.frequency = random.uniform(0.5, 1.5)
 
-    def update(self, time):
-        # Vertical floating motion
-        self.pos.setY(self.initial_pos.y() + 
-                     self.amplitude * math.sin(self.frequency * time + self.phase))
-
-class BackgroundWidget(QWidget):
+class GameBoard(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.time = 0
-        
-        # Create floating stones
-        self.stones = []
-        stone_positions = [
-            (100, 100), (300, 200), (500, 300),
-            (200, 400), (600, 150), (400, 450),
-            (150, 250), (450, 150), (650, 400)
-        ]
-        
-        for pos in stone_positions:
-            self.stones.append(Stone(pos[0], pos[1], random.choice([True, False])))
-        
-        # Animation timer
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_animation)
-        self.timer.start(16)  # 60 FPS approximately
-        
-    def update_animation(self):
-        self.time += 0.016  # Increment time (in seconds)
-        for stone in self.stones:
-            stone.update(self.time)
-        self.update()  # Trigger repaint
+        self.stones = {}  # Dictionary to store placed stones
+        self.grid_size = 40
+        self.board_size = 19
+        self.black_turn = True
         
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Draw background
-        painter.fillRect(self.rect(), QColor(44, 62, 80))
+        # Draw game board
+        offset_x = (self.width() - (self.board_size - 1) * self.grid_size) // 2
+        offset_y = (self.height() - (self.board_size - 1) * self.grid_size) // 2
         
-        # Draw grid
-        pen = QPen(QColor(255, 255, 255, 30))
+        # Draw game grid
+        pen = QPen(QColor(255, 255, 255, 100))
         pen.setWidth(1)
         painter.setPen(pen)
         
-        spacing = 40
-        for i in range(0, self.width(), spacing):
-            painter.drawLine(i, 0, i, self.height())
-        for i in range(0, self.height(), spacing):
-            painter.drawLine(0, i, self.width(), i)
+        for i in range(self.board_size):
+            x = offset_x + i * self.grid_size
+            y = offset_y + i * self.grid_size
+            painter.drawLine(x, offset_y, x, offset_y + (self.board_size - 1) * self.grid_size)
+            painter.drawLine(offset_x, y, offset_x + (self.board_size - 1) * self.grid_size, y)
+        
+        # Draw placed stones
+        for (x, y), is_black in self.stones.items():
+            stone_x = offset_x + x * self.grid_size
+            stone_y = offset_y + y * self.grid_size
             
-        # Draw floating stones
-        for stone in self.stones:
             # Draw shadow
             painter.setBrush(QBrush(QColor(0, 0, 0, 40)))
             painter.setPen(Qt.PenStyle.NoPen)
-            shadow_pos = QPointF(stone.pos.x() + 2, stone.pos.y() + 2)
-            painter.drawEllipse(shadow_pos, 17, 17)
+            painter.drawEllipse(stone_x + 2, stone_y + 2, 34, 34)
             
             # Draw stone
-            if stone.is_black:
-                painter.setBrush(QBrush(QColor(50, 50, 50)))
-            else:
-                painter.setBrush(QBrush(QColor(240, 240, 240)))
-            painter.drawEllipse(stone.pos, 17, 17)
+            color = QColor(50, 50, 50) if is_black else QColor(240, 240, 240)
+            painter.setBrush(QBrush(color))
+            painter.drawEllipse(stone_x - 17, stone_y - 17, 34, 34)
+
+
+        for (x, y), is_black in self.stones.items():
+            stone_x = offset_x + x * self.grid_size
+            stone_y = offset_y + y * self.grid_size
+            self.draw_stone(painter, stone_x, stone_y, is_black)
+
+    def mousePressEvent(self, event):
+        offset_x = (self.width() - (self.board_size - 1) * self.grid_size) // 2
+        offset_y = (self.height() - (self.board_size - 1) * self.grid_size) // 2
+        
+        # Calculate grid position
+        x = round((event.position().x() - offset_x) / self.grid_size)
+        y = round((event.position().y() - offset_y) / self.grid_size)
+        
+        # Check if click is within board bounds
+        if 0 <= x < self.board_size and 0 <= y < self.board_size:
+            # Place stone if intersection is empty
+            if (x, y) not in self.stones:
+                self.stones[(x, y)] = self.black_turn
+                self.black_turn = not self.black_turn
+                self.update()
+
+
+
+class Stone:
+    SPEED_MULTIPLIER = 0.3
+    GRID_SIZE = 40
+    MAX_STEPS = 1
+
+    def __init__(self, x, y, is_black):
+        self.original_grid_x = round(x / self.GRID_SIZE)
+        self.original_grid_y = round(y / self.GRID_SIZE)
+        self.is_black = is_black
+        
+        self.pos = QPointF(x, y)
+        self.velocity = QPointF(0, 0)
+        
+        # Movement parameters
+        self.direction = random.uniform(0, 2 * math.pi)
+        self.speed = 0.5  # Base movement speed
+        
+        # Boundary box (area where stone can move)
+        self.min_x = x - self.GRID_SIZE * self.MAX_STEPS
+        self.max_x = x + self.GRID_SIZE * self.MAX_STEPS
+        self.min_y = y - self.GRID_SIZE * self.MAX_STEPS
+        self.max_y = y + self.GRID_SIZE * self.MAX_STEPS
+        
+        # Direction change parameters
+        self.direction_timer = 0
+        self.direction_change_interval = random.uniform(2.0, 4.0)
+
+    def update(self, time):
+        # Update direction periodically
+        self.direction_timer += time
+        if self.direction_timer >= self.direction_change_interval:
+            self.direction_timer = 0
+            self.direction_change_interval = random.uniform(2.0, 4.0)
+            # Gradual direction change
+            self.direction += random.uniform(-0.5, 0.5)  # Small random direction change
             
-        # Draw grid lines
+        # Calculate new position
+        dx = math.cos(self.direction) * self.speed
+        dy = math.sin(self.direction) * self.speed
+        
+        new_x = self.pos.x() + dx
+        new_y = self.pos.y() + dy
+        
+        # Bounce off boundaries
+        if new_x < self.min_x or new_x > self.max_x:
+            dx = -dx
+            self.direction = math.pi - self.direction
+        if new_y < self.min_y or new_y > self.max_y:
+            dy = -dy
+            self.direction = -self.direction
+            
+        # Update position
+        self.pos = QPointF(
+            max(self.min_x, min(self.max_x, self.pos.x() + dx)),
+            max(self.min_y, min(self.max_y, self.pos.y() + dy))
+        )
+
+
+
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
