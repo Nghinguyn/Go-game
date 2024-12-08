@@ -7,6 +7,8 @@ from PyQt6.QtGui import *
 class MainGame(QWidget):
 
     current_player_changed = pyqtSignal(int)
+    captures_changed = pyqtSignal(int, int)  # Move this to class level
+    move_made = pyqtSignal(int, int, int)  # Add new signal (x, y, player)
 
 
     def __init__(self, size=9):
@@ -21,6 +23,101 @@ class MainGame(QWidget):
         self.setFixedSize(total_size, total_size)
         
         self.setMouseTracking(True)
+        
+        self.previous_board = None  # For ko rule
+        self.captured_black = 0
+        self.captured_white = 0
+        
+        
+    def get_neighbors(self, x, y):
+        """Get valid neighboring positions"""
+        neighbors = []
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+            new_x, new_y = x + dx, y + dy
+            if 0 <= new_x < self.size and 0 <= new_y < self.size:
+                neighbors.append((new_x, new_y))
+        return neighbors
+    
+    def get_group(self, x, y):
+        """Find all connected stones of the same color"""
+        color = self.board[y][x]
+        if color == 0:
+            return set()
+            
+        group = set([(x, y)])
+        stack = [(x, y)]
+        
+        while stack:
+            current_x, current_y = stack.pop()
+            for nx, ny in self.get_neighbors(current_x, current_y):
+                if self.board[ny][nx] == color and (nx, ny) not in group:
+                    group.add((nx, ny))
+                    stack.append((nx, ny))
+        return group
+    
+    def get_liberties(self, group):
+        """Count liberties of a group"""
+        liberties = set()
+        for x, y in group:
+            for nx, ny in self.get_neighbors(x, y):
+                if self.board[ny][nx] == 0:
+                    liberties.add((nx, ny))
+        return liberties
+    
+    def remove_group(self, group):
+        """Remove a group of stones and count them"""
+        count = len(group)
+        for x, y in group:
+            self.board[y][x] = 0
+        return count
+    
+    def check_captures(self, x, y):
+        """Check and perform captures after a stone is placed"""
+        captured = 0
+        opponent = 3 - self.board[y][x]
+        
+        # Check all neighboring groups
+        for nx, ny in self.get_neighbors(x, y):
+            if self.board[ny][nx] == opponent:
+                group = self.get_group(nx, ny)
+                if not self.get_liberties(group):
+                    captured += self.remove_group(group)
+        
+        return captured
+    
+    def is_valid_move(self, x, y):
+        """Check if a move is valid (including ko and suicide rules)"""
+        if self.board[y][x] != 0:
+            return False
+            
+        # Make temporary move
+        self.board[y][x] = self.current_player
+        
+        # Check for ko rule
+        if self.previous_board is not None and self.board == self.previous_board:
+            self.board[y][x] = 0
+            return False
+            
+        # Check if move creates a group with liberties
+        group = self.get_group(x, y)
+        has_liberties = bool(self.get_liberties(group))
+        
+        # If no liberties, check if it captures opponent stones
+        if not has_liberties:
+            will_capture = False
+            for nx, ny in self.get_neighbors(x, y):
+                if self.board[ny][nx] == 3 - self.current_player:
+                    opp_group = self.get_group(nx, ny)
+                    if not self.get_liberties(opp_group):
+                        will_capture = True
+                        break
+            
+            if not will_capture:
+                self.board[y][x] = 0
+                return False
+        
+        self.board[y][x] = 0
+        return True
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -103,17 +200,31 @@ class MainGame(QWidget):
             painter.drawText(self.padding - 15, y + 5, str(i + 1))
 
     def mousePressEvent(self, event):
-        # Improve coordinate calculation
         x = round((event.position().x() - self.padding - self.cell_size) / self.cell_size)
         y = round((event.position().y() - self.padding - self.cell_size) / self.cell_size)
         
         if 0 <= x < self.size and 0 <= y < self.size:
-            if self.board[y][x] == 0:
+            if self.is_valid_move(x, y):
+                self.previous_board = [row[:] for row in self.board]
                 self.board[y][x] = self.current_player
+                
+                # Emit move information
+                self.move_made.emit(x, y, self.current_player)
+                
+                captures = self.check_captures(x, y)
+                if self.current_player == 1:
+                    self.captured_white += captures
+                else:
+                    self.captured_black += captures
+                
+                self.captures_changed.emit(self.captured_black, self.captured_white)
                 self.current_player = 3 - self.current_player
-                # Emit signal when player changes
                 self.current_player_changed.emit(self.current_player)
                 self.update()
+                
+                
+                
+    
 
 
 class GoGame(QMainWindow):
@@ -135,6 +246,58 @@ class GoGame(QMainWindow):
         self.current_player_label = QLabel("Current Player: Black (○)")
         self.black_captures_label = QLabel("Black Captures: 0")
         self.white_captures_label = QLabel("White Captures: 0")
+        
+        # Create move history list widget
+        self.move_history_widget = QListWidget()
+        self.move_history_widget.setFixedWidth(260)  # Match info panel width
+        self.move_history_widget.setStyleSheet("""
+            QListWidget {
+                background-color: #2c3e50;
+                border-radius: 10px;
+                padding: 10px;
+                color: white;
+                font-size: 14px;
+            }
+            QListWidget::item {
+                padding: 5px;
+                margin: 2px;
+                background-color: #34495e;
+                border-radius: 5px;
+            }
+            QListWidget::item:hover {
+                background-color: #3498db;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #2c3e50;
+                width: 10px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: #3498db;
+                border-radius: 5px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
+
+        # Add move history label
+        self.move_history_label = QLabel("Move History")
+        self.move_history_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 5px;
+            }
+        """)
+
+        # Connect the move signal
+        self.board.move_made.connect(self.record_move)
+        
+        # Move counter
+        self.move_counter = 1
         
         # Create a styled pause button
         self.pause_button = QPushButton("Pause")
@@ -172,7 +335,15 @@ class GoGame(QMainWindow):
         self.black_captures_label.setStyleSheet(label_style)
         self.white_captures_label.setStyleSheet(label_style)
         
+        # Connect captures signal
+        self.board.captures_changed.connect(self.update_captures)
+        
         self.initUI()
+        
+    def update_captures(self, black_captures, white_captures):
+        """Update the capture count labels"""
+        self.black_captures_label.setText(f"Black Captures: {black_captures}")
+        self.white_captures_label.setText(f"White Captures: {white_captures}")
 
     def create_info_panel(self):
         # Widen the info panel
@@ -254,6 +425,28 @@ class GoGame(QMainWindow):
         painter.setBrush(QBrush(gradient))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(stone)
+        
+        
+    def record_move(self, x, y, player):
+        """Record a move in the move history"""
+        # Convert coordinates to Go notation (A-T for columns, 1-19 for rows)
+        col = chr(65 + x)  # A, B, C, etc.
+        row = str(y + 1)
+        color = "Black" if player == 1 else "White"
+        
+        # Format the move entry
+        move_text = f"Move {self.move_counter}: {color} - {col}{row}"
+        
+        # Add to list widget
+        item = QListWidgetItem(move_text)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.move_history_widget.addItem(item)
+        
+        # Scroll to the latest move
+        self.move_history_widget.scrollToBottom()
+        
+        # Increment move counter
+        self.move_counter += 1
 
 
     def initUI(self):
@@ -303,6 +496,13 @@ class GoGame(QMainWindow):
         info_layout.addWidget(self.black_captures_label)
         info_layout.addWidget(self.white_captures_label)
         info_layout.addStretch()
+        
+         # Add move history to info panel
+        info_layout.addWidget(self.move_history_label)
+        info_layout.addWidget(self.move_history_widget)
+        
+        # Add some spacing before the pause button
+        info_layout.addSpacing(20)
         
         # Add pause button frame under info panel
         pause_frame = QFrame()
