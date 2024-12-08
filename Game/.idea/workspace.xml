@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="58be8b90-e6b9-4f32-bab1-c96a16afbfc0" name="Changes" comment="" />
+    <list default="true" id="58be8b90-e6b9-4f32-bab1-c96a16afbfc0" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/../code/templatev1/test.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../code/templatev1/__main__.py" beforeDir="false" afterPath="$PROJECT_DIR$/../code/templatev1/__main__.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -13,9 +17,9 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 4
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
   <component name="ProjectId" id="2ppJaoiVlYwKG01VDt6m35axJrG" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -27,8 +31,8 @@
     "Python.MainPage.executor": "Run",
     "Python.main.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "C:/Users/ADMiN/Go-game/Game",
+    "git-widget-placeholder": "Rosy",
+    "last_opened_file_path": "C:/Users/ADMiN/Go-game/code",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -55,6 +59,7 @@
       <option name="presentableId" value="Default" />
       <updated>1733457150245</updated>
       <workItem from="1733457151275" duration="476000" />
+      <workItem from="1733460872564" duration="638000" />
     </task>
     <servers />
   </component>
