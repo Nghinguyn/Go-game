@@ -1,8 +1,9 @@
-import sys
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel,
-                            QPushButton, QVBoxLayout, QStackedWidget)
+
+from PyQt6.QtWidgets import *
 from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QTimer, QPointF
 from PyQt6.QtGui import QFont, QColor, QPalette, QPainter, QPen, QBrush, QPainterPath, QRadialGradient
+from Setting import SettingsDialog
+from main import GoGame
 import random, math
 
 
@@ -193,6 +194,11 @@ class AnimatedButton(QPushButton):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        # Initialize default settings
+        self.board_size = 19  # Default board size
+        self.sound_enabled = True
+        self.game_timer = 5
+        self.game_board = GoGame()
         self.initUI()
 
     def initUI(self):
@@ -249,8 +255,8 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.game_screen)
         
         # Connect buttons
-        start_btn.clicked.connect(self.start_game)
-        settings_btn.clicked.connect(lambda: print("Opening Settings..."))
+        start_btn.clicked.connect(self.show_user_page)
+        settings_btn.clicked.connect(self.show_settings)
         exit_btn.clicked.connect(self.close)
         
         
@@ -262,13 +268,62 @@ class MainWindow(QMainWindow):
         # This ensures they're created on top of the background
         self.logo = QLabel(self.menu_screen)
         # ... logo setup ...
+
+
+
         
         
         
         
 
-    def start_game(self):
-        self.stacked_widget.setCurrentWidget(self.game_screen)
+    def show_user_page(self):
+        from UserPage import UserPageDialog
+        self.user_dialog = UserPageDialog(self, self.game_board)
+        self.user_dialog.game_started.connect(self.start_game)
+        self.user_dialog.show()
+
+    def start_game(self, game_settings):
+        """Handle game start with player settings"""
+        try:
+            print(f"Starting game with settings: {game_settings}")
+            
+            # Create new game board with settings
+            self.game_board.setup_game(game_settings)
+            
+            self.stacked_widget.setCurrentWidget(self.game_board)
+            
+        except Exception as e:
+            print(f"Error in start_game: {e}")
+            QMessageBox.critical(self, "Error", "Failed to start game. Please try again.")
+
+
+    def show_settings(self):
+        settings_dialog = SettingsDialog(self)
+        settings_dialog.settings_changed.connect(self.apply_settings)
+        settings_dialog.exec()
+
+    def apply_settings(self, settings):
+        # Apply the settings from the settings dialog
+        pass
+
+
+    def start_game_board(self):
+        # Clear any existing game state
+        if hasattr(self, 'game_board'):
+            self.game_board.close()
+        
+        # Initialize the game board with current settings
+        self.game_board = GameBoard(
+            player1=self.player1,
+            player2=self.player2,
+            mode=self.current_game_mode,
+            # Add other necessary parameters
+            parent=self
+        )
+        
+        # Show the game board
+        self.setCentralWidget(self.game_board)
+        self.game_board.show()
 
 
 
@@ -337,6 +392,12 @@ class GameBoard(QWidget):
                 self.update()
 
 
+    def set_board_size(self, size):
+        self.board_size = size
+        self.stones.clear()  # Clear stones when board size changes
+        self.update()
+
+
 
 class Stone:
     SPEED_MULTIPLIER = 0.3
@@ -399,8 +460,3 @@ class Stone:
 
 
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())

@@ -1,9 +1,15 @@
-import sys
+# If_main.py
 from PyQt6.QtWidgets import QApplication
-from main import GoGame
+import sys
 
-if __name__ == '__main__':
+def main():
     app = QApplication(sys.argv)
-    game = GoGame()
-    game.show()
+    # Import here instead of at the top
+    from MainPage import MainWindow
+    window = MainWindow()
+    window.show()
     sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
+    

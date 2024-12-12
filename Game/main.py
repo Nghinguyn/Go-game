@@ -1,14 +1,19 @@
-import sys
 
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import *
 from PyQt6.QtGui import *
+
+
 
 class MainGame(QWidget):
 
     current_player_changed = pyqtSignal(int)
     captures_changed = pyqtSignal(int, int)  # Move this to class level
     move_made = pyqtSignal(int, int, int)  # Add new signal (x, y, player)
+    game_reset = pyqtSignal()  # Signal for game reset
+    player_passed = pyqtSignal(int)  # Signal for when a player passes
+    return_to_home = pyqtSignal()
+
 
 
     def __init__(self, size=9):
@@ -18,6 +23,7 @@ class MainGame(QWidget):
         self.cell_size = 40
         self.padding = 20
         self.current_player = 1
+        self.pass_count = 0
 
         total_size = (self.size + 1) * self.cell_size + 2 * self.padding
         self.setFixedSize(total_size, total_size)
@@ -27,6 +33,8 @@ class MainGame(QWidget):
         self.previous_board = None  # For ko rule
         self.captured_black = 0
         self.captured_white = 0
+
+        
         
         
     def get_neighbors(self, x, y):
@@ -205,6 +213,7 @@ class MainGame(QWidget):
         
         if 0 <= x < self.size and 0 <= y < self.size:
             if self.is_valid_move(x, y):
+                self.pass_count = 0
                 self.previous_board = [row[:] for row in self.board]
                 self.board[y][x] = self.current_player
                 
@@ -221,6 +230,90 @@ class MainGame(QWidget):
                 self.current_player = 3 - self.current_player
                 self.current_player_changed.emit(self.current_player)
                 self.update()
+
+
+
+    def reset_game(self):
+        """Reset the game state"""
+        self.board = [[0 for _ in range(self.size)] for _ in range(self.size)]
+        self.current_player = 1
+        self.captured_black = 0
+        self.captured_white = 0
+        self.previous_board = None
+        self.pass_count = 0
+        self.update()
+        self.game_reset.emit()  
+
+    def pass_move(self):
+        """Handle pass move"""
+        self.pass_count += 1
+        if self.pass_count >= 2:
+            # Handle game end
+            self.show_game_end_dialog()
+            return
+        self.player_passed.emit(self.current_player)
+        self.current_player = 3 - self.current_player
+        self.current_player_changed.emit(self.current_player)
+        self.update()
+
+
+    def show_game_end_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Game Over")
+        dialog.setFixedSize(300, 200)
+        dialog.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        layout = QVBoxLayout()
+        
+        message = QLabel("Game Over\nTwo consecutive passes")
+        message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+            }
+        """)
+        
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(dialog.accept)
+        ok_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                border-radius: 15px;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 15px 30px;
+                min-width: 120px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        
+        layout.addStretch()
+        layout.addWidget(message)
+        layout.addWidget(ok_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch()
+        
+        dialog.setLayout(layout)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #2c3e50;
+                border-radius: 15px;
+            }
+        """)
+        
+        dialog.exec()
+
+
+
+    
+        
+        
                 
                 
                 
@@ -230,115 +323,41 @@ class MainGame(QWidget):
 class GoGame(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setMinimumSize(1200, 800)  # Instead of current smaller size
+        self.setMinimumSize(1200, 800)
         
-        # Adjust layout proportions
-        self.main_layout = QHBoxLayout()
-        self.main_layout.setStretch(0, 1)  # Info panel
-        self.main_layout.setStretch(1, 3) 
-        # Create the game board and labels with styled appearance
+        # Initialize game state
+        self.player1 = None
+        self.player2 = None
+        self.game_mode = None
+        self.game_settings = None
+        self.move_counter = 1
+        
+        # Create the game board
         self.board = MainGame(9)
-
-        # Connect the signal to update the label
-        self.board.current_player_changed.connect(self.update_current_player)
         
-        # Style the labels with custom font and colors
+        # Create UI elements
         self.current_player_label = QLabel("Current Player: Black (○)")
         self.black_captures_label = QLabel("Black Captures: 0")
         self.white_captures_label = QLabel("White Captures: 0")
-        
-        # Create move history list widget
-        self.move_history_widget = QListWidget()
-        self.move_history_widget.setFixedWidth(260)  # Match info panel width
-        self.move_history_widget.setStyleSheet("""
-            QListWidget {
-                background-color: #2c3e50;
-                border-radius: 10px;
-                padding: 10px;
-                color: white;
-                font-size: 14px;
-            }
-            QListWidget::item {
-                padding: 5px;
-                margin: 2px;
-                background-color: #34495e;
-                border-radius: 5px;
-            }
-            QListWidget::item:hover {
-                background-color: #3498db;
-            }
-            QScrollBar:vertical {
-                border: none;
-                background: #2c3e50;
-                width: 10px;
-                border-radius: 5px;
-            }
-            QScrollBar::handle:vertical {
-                background: #3498db;
-                border-radius: 5px;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """)
-
-        # Add move history label
         self.move_history_label = QLabel("Move History")
-        self.move_history_label.setStyleSheet("""
-            QLabel {
-                color: white;
-                font-size: 16px;
-                font-weight: bold;
-                padding: 5px;
-            }
-        """)
-
-        # Connect the move signal
-        self.board.move_made.connect(self.record_move)
+        self.move_history_widget = QListWidget()
         
-        # Move counter
-        self.move_counter = 1
-        
-        # Create a styled pause button
+        # Create buttons
+        self.Reset_button = QPushButton("Reset")
+        self.Pass_button = QPushButton("Pass")
         self.pause_button = QPushButton("Pause")
-        self.pause_button.setFixedSize(120, 40)
-        self.pause_button.setStyleSheet("""
-            QPushButton {
-                background-color: #2c3e50;
-                color: white;
-                border: none;
-                border-radius: 20px;
-                font-size: 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #34495e;
-            }
-            QPushButton:pressed {
-                background-color: #2980b9;
-            }
-        """)
         
-        # Apply styles to labels
-        label_style = """
-            QLabel {
-                color: white;
-                font-size: 18px;
-                font-weight: bold;
-                padding: 10px;
-                background-color: #34495e;
-                border-radius: 10px;
-                margin: 5px;
-            }
-        """
-        self.current_player_label.setStyleSheet(label_style)
-        self.black_captures_label.setStyleSheet(label_style)
-        self.white_captures_label.setStyleSheet(label_style)
+        # Set up UI elements
+        self._setup_ui_elements()
         
-        # Connect captures signal
-        self.board.captures_changed.connect(self.update_captures)
+        # Connect signals
+        self._connect_signals()
         
+        # Initialize UI
         self.initUI()
+
+
+    
         
     def update_captures(self, black_captures, white_captures):
         """Update the capture count labels"""
@@ -464,18 +483,20 @@ class GoGame(QMainWindow):
             }
         """)
 
+        # Create central widget
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         
+        # Main layout
         main_layout = QHBoxLayout(main_widget)
         main_layout.setContentsMargins(40, 40, 40, 40)
         main_layout.setSpacing(30)
         
-        # Left side container
+        # Left container setup
         left_container = QVBoxLayout()
         left_container.setSpacing(20)
         
-        # Left info panel with gradient background
+        # Info panel setup
         info_panel = QFrame()
         info_panel.setFixedWidth(300)
         info_panel.setStyleSheet("""
@@ -487,40 +508,76 @@ class GoGame(QMainWindow):
             }
         """)
         
+        # Info panel layout
         info_layout = QVBoxLayout(info_panel)
         info_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         info_layout.setSpacing(20)
         
-        # Add game info widgets to info panel
+        # Player information
+        if self.player1 and self.player2:
+            # Player 1 info
+            p1_group = QGroupBox(f"Player 1: {self.player1['name']}")
+            p1_layout = QVBoxLayout()
+            p1_color_label = QLabel(f"Color: {self.player1['color']}")
+            p1_layout.addWidget(p1_color_label)
+            p1_group.setLayout(p1_layout)
+            
+            # Player 2 info
+            p2_group = QGroupBox(f"Player 2: {self.player2['name']}")
+            p2_layout = QVBoxLayout()
+            p2_color_label = QLabel(f"Color: {self.player2['color']}")
+            p2_layout.addWidget(p2_color_label)
+            p2_group.setLayout(p2_layout)
+            
+            info_layout.addWidget(p1_group)
+            info_layout.addWidget(p2_group)
+        
+        # Game status information
         info_layout.addWidget(self.current_player_label)
         info_layout.addWidget(self.black_captures_label)
         info_layout.addWidget(self.white_captures_label)
-        info_layout.addStretch()
         
-         # Add move history to info panel
+        # Move history
         info_layout.addWidget(self.move_history_label)
         info_layout.addWidget(self.move_history_widget)
+        info_layout.addStretch()
         
-        # Add some spacing before the pause button
-        info_layout.addSpacing(20)
-        
-        # Add pause button frame under info panel
-        pause_frame = QFrame()
-        pause_frame.setFixedHeight(80)
-        pause_frame.setFixedWidth(300)
-        pause_frame.setStyleSheet("""
+        # Button frame
+        button_frame = QFrame()
+        button_frame.setFixedHeight(160)
+        button_frame.setFixedWidth(300)
+        button_frame.setStyleSheet("""
             QFrame {
                 background-color: #2c2c2c;
                 border-radius: 15px;
+                padding: 15px;
             }
         """)
-        pause_layout = QHBoxLayout(pause_frame)
-        pause_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        pause_layout.addWidget(self.pause_button)
         
-        # Add info panel and pause button to left container
+        # Button layout
+        button_layout = QVBoxLayout(button_frame)
+        button_layout.setSpacing(10)
+        
+        # Button container
+        top_button_container = QHBoxLayout()
+        top_button_container.setSpacing(10)
+        top_button_container.addWidget(self.Pass_button)
+        top_button_container.addWidget(self.Reset_button)
+
+        # Middle button container
+        middle_button_container = QHBoxLayout()
+        middle_button_container.setSpacing(10)
+        middle_button_container.addWidget(self.pause_button)
+        middle_button_container.addWidget(self.back_home_button)
+        
+        
+        
+        button_layout.addLayout(top_button_container)
+        button_layout.addWidget(self.pause_button, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        # Add panels to left container
         left_container.addWidget(info_panel)
-        left_container.addWidget(pause_frame)
+        left_container.addWidget(button_frame)
         
         # Right container with board
         right_container = QFrame()
@@ -532,7 +589,7 @@ class GoGame(QMainWindow):
             }
         """)
         
-        # Add shadow effect to board container
+        # Add shadow to board container
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(20)
         shadow.setColor(QColor(0, 0, 0, 150))
@@ -542,9 +599,9 @@ class GoGame(QMainWindow):
         right_layout = QVBoxLayout(right_container)
         right_layout.setContentsMargins(30, 30, 30, 30)
         
-        # Make the board bigger
-        self.board.cell_size = 80  # Increase cell size
-        self.board.padding = 50    # Increase padding
+        # Configure board size
+        self.board.cell_size = 80
+        self.board.padding = 50
         total_size = (self.board.size + 1) * self.board.cell_size + 2 * self.board.padding
         self.board.setFixedSize(total_size, total_size)
         
@@ -557,6 +614,352 @@ class GoGame(QMainWindow):
         # Add escape key shortcut
         shortcut = QShortcut(QKeySequence('Esc'), self)
         shortcut.activated.connect(self.showNormal)
+
+
+
+
+    
+
+
+
+    def show_pause_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Game Paused")
+        dialog.setFixedSize(400, 300)  # Made bigger to accommodate more buttons
+        dialog.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        # Add shadow effect
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 150))
+        shadow.setOffset(0, 0)
+        dialog.setGraphicsEffect(shadow)
+        
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+        
+        # Title
+        message = QLabel("Game Paused")
+        message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 28px;
+                font-weight: bold;
+                margin-bottom: 20px;
+            }
+        """)
+        
+        # Button style
+        button_style = """
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                border-radius: 15px;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 15px 30px;
+                min-width: 200px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """
+        
+        # Resume button
+        resume_btn = QPushButton("Resume Game")
+        resume_btn.clicked.connect(dialog.accept)
+        resume_btn.setStyleSheet(button_style)
+        
+        # Back to home button
+        back_home_btn = QPushButton("Back to Home")
+        back_home_btn.setStyleSheet(button_style.replace("#3498db", "#e74c3c").replace("#2980b9", "#c0392b"))
+        back_home_btn.clicked.connect(self.go_back_to_home)
+        back_home_btn.clicked.connect(dialog.accept)
+        
+        # Container for buttons
+        button_container = QVBoxLayout()
+        button_container.setSpacing(15)
+        button_container.addWidget(resume_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        button_container.addWidget(back_home_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        
+        layout.addStretch()
+        layout.addWidget(message)
+        layout.addLayout(button_container)
+        layout.addStretch()
+        
+        dialog.setLayout(layout)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #2c3e50;
+                border-radius: 20px;
+            }
+        """)
+        
+        dialog.exec()
+
+
+
+
+
+
+
+    def reset_game(self):
+        self.move_counter = 1
+        self.move_history_widget.clear()
+        self.board.reset_game()
+
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_F11:
+            if self.isFullScreen():
+                self.showNormal()
+            else:
+                self.showFullScreen()
+        super().keyPressEvent(event)
+
+
+    def closeEvent(self, event):
+        # Clean up resources
+        self.board.deleteLater()
+        super().closeEvent(event)
+
+
+    def setup_game(self, game_settings):
+        """Set up the game with the provided settings."""
+        self.game_settings = game_settings
+        self.player1 = game_settings['player1']
+        self.player2 = game_settings['player2']
+        self.game_mode = game_settings['mode']
+
+        # Initialize the game board
+        self.init_game_board()
+
+        # Update UI with player names and colors
+        self.update_player_info()
+
+        # Start the game
+        self.start_game()
+        
+        self.initUI()
+
+    def init_game_board(self):
+        """Initialize the game board"""
+        self.board.reset_game()
+        self.move_counter = 1
+        self.move_history_widget.clear()
+
+    def update_player_info(self):
+        """Update the player information display."""
+        if self.player1 and self.player2:
+            self.current_player_label.setText(
+                f"Current Player: {self.player1['name']} ({self.player1['color']})"
+            )
+
+    def start_game(self):
+        """Start the game"""
+        try:
+            print(f"Starting game with settings: {self.game_settings}")
+            self.update_player_info()
+            self.board.reset_game()
+        except Exception as e:
+            print(f"Error in start_game: {e}")
+            raise
+
+
+    def _setup_ui_elements(self):
+        """Set up UI elements with styles"""
+        # Style for the move history widget
+        self.move_history_widget.setFixedWidth(260)
+        self.move_history_widget.setStyleSheet("""
+            QListWidget {
+                background-color: #2c3e50;
+                border-radius: 10px;
+                padding: 10px;
+                color: white;
+                font-size: 14px;
+            }
+            QListWidget::item {
+                padding: 5px;
+                margin: 2px;
+                background-color: #34495e;
+                border-radius: 5px;
+            }
+        """)
+        
+        # Style for buttons
+        button_style = """
+            QPushButton {
+                background-color: #2c3e50;
+                color: white;
+                border: none;
+                border-radius: 20px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #34495e;
+            }
+        """
+        
+        for button in [self.Reset_button, self.Pass_button, self.pause_button]:
+            button.setFixedSize(120, 40)
+            button.setStyleSheet(button_style)
+
+
+
+        self.back_home_button = QPushButton("Back to Home")
+        self.back_home_button.setFixedSize(120, 40)
+        self.back_home_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                border: none;
+                border-radius: 20px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
+
+        
+
+    def _connect_signals(self):
+        """Connect all signals"""
+        self.board.current_player_changed.connect(self.update_current_player)
+        self.board.captures_changed.connect(self.update_captures)
+        self.board.move_made.connect(self.record_move)
+        self.Pass_button.clicked.connect(self.board.pass_move)
+        self.Reset_button.clicked.connect(self.reset_game)
+        self.pause_button.clicked.connect(self.show_pause_dialog)
+        self.back_home_button.clicked.connect(self.go_back_to_home)
+
+
+
+    def go_back_to_home(self):
+        """Handle returning to home page with a custom QDialog"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Confirm Exit")
+        dialog.setFixedSize(400, 250)
+        dialog.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        
+        # Add shadow effect
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 150))
+        shadow.setOffset(0, 0)
+        dialog.setGraphicsEffect(shadow)
+        
+        # Create layout
+        layout = QVBoxLayout()
+        layout.setSpacing(20)
+        
+        # Warning icon
+        icon_label = QLabel()
+        warning_icon = QApplication.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning)
+        icon_label.setPixmap(warning_icon.pixmap(64, 64))
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Message
+        message = QLabel("Are you sure you want to return to the home page?")
+        message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message.setWordWrap(True)
+        message.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 18px;
+                font-weight: bold;
+            }
+        """)
+        
+        sub_message = QLabel("Current game progress will be lost.")
+        sub_message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub_message.setStyleSheet("""
+            QLabel {
+                color: #e74c3c;
+                font-size: 14px;
+            }
+        """)
+        
+        # Button container
+        button_container = QHBoxLayout()
+        button_container.setSpacing(15)
+        
+        # Button style
+        button_style = """
+            QPushButton {
+                color: white;
+                border: none;
+                border-radius: 15px;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 12px 25px;
+                min-width: 120px;
+            }
+            QPushButton:hover {
+                background-color: %s;
+            }
+        """
+        
+        # Yes button (red)
+        yes_btn = QPushButton("Yes, Exit")
+        yes_btn.setStyleSheet(button_style % "#c0392b" + """
+            QPushButton {
+                background-color: #e74c3c;
+            }
+        """)
+        yes_btn.clicked.connect(lambda: self.return_to_main_page(dialog))
+        
+        # No button (blue)
+        no_btn = QPushButton("No, Stay")
+        no_btn.setStyleSheet(button_style % "#2980b9" + """
+            QPushButton {
+                background-color: #3498db;
+            }
+        """)
+        no_btn.clicked.connect(dialog.reject)
+        
+        # Add buttons to container
+        button_container.addWidget(no_btn)
+        button_container.addWidget(yes_btn)
+        
+        # Add all elements to main layout
+        layout.addStretch()
+        layout.addWidget(icon_label)
+        layout.addWidget(message)
+        layout.addWidget(sub_message)
+        layout.addSpacing(20)
+        layout.addLayout(button_container)
+        layout.addStretch()
+        
+        dialog.setLayout(layout)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #2c3e50;
+                border-radius: 20px;
+            }
+        """)
+        
+        dialog.exec()
+
+
+    def return_to_main_page(self, dialog):
+        """Switch back to the main menu and close the dialog."""
+        self.close  # Switch to the main menu
+
+
+    
+
+
+
+   
+
+
 
 
 
