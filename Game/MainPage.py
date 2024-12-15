@@ -3,7 +3,8 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtCore import Qt, QPropertyAnimation, QPoint, QEasingCurve, QTimer, QPointF
 from PyQt6.QtGui import QFont, QColor, QPalette, QPainter, QPen, QBrush, QPainterPath, QRadialGradient
 from Setting import SettingsDialog
-from main import GoGame
+from UserPage import UserPageDialog
+from mainGame import GoGame
 import random, math
 
 
@@ -198,7 +199,7 @@ class MainWindow(QMainWindow):
         self.board_size = 19  # Default board size
         self.sound_enabled = True
         self.game_timer = 5
-        self.game_board = GoGame()
+        self.game_board = None
         self.initUI()
 
     def initUI(self):
@@ -257,7 +258,7 @@ class MainWindow(QMainWindow):
         # Connect buttons
         start_btn.clicked.connect(self.show_user_page)
         settings_btn.clicked.connect(self.show_settings)
-        exit_btn.clicked.connect(self.close)
+        exit_btn.clicked.connect(QApplication.instance().quit)
         
         
         # Create background widget first
@@ -277,10 +278,14 @@ class MainWindow(QMainWindow):
         
 
     def show_user_page(self):
-        from UserPage import UserPageDialog
+        if not self.game_board:
+            self.game_board = GoGame()
+            self.game_board.returnToHome.connect(self.show_menu)  # Connect the signal
+        
         self.user_dialog = UserPageDialog(self, self.game_board)
         self.user_dialog.game_started.connect(self.start_game)
         self.user_dialog.show()
+
 
     def start_game(self, game_settings):
         """Handle game start with player settings"""
@@ -324,6 +329,11 @@ class MainWindow(QMainWindow):
         # Show the game board
         self.setCentralWidget(self.game_board)
         self.game_board.show()
+
+
+    def show_menu(self):
+        """Switch back to the menu screen"""
+        self.stacked_widget.setCurrentIndex(0)
 
 
 
@@ -456,6 +466,8 @@ class Stone:
             max(self.min_y, min(self.max_y, self.pos.y() + dy))
         )
 
+
+    
 
 
 
