@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-                            QLabel, QFrame, QGridLayout, QListWidget, QGraphicsDropShadowEffect)
+                            QLabel, QFrame, QGridLayout, QListWidget, QGraphicsDropShadowEffect, QGraphicsBlurEffect)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from board_canvas import BoardCanvas
+from end_game import EndGameOverlay
 from PyQt6.QtCore import QTimer
 
 class GoBoard(QWidget):
@@ -572,20 +573,96 @@ class GoBoard(QWidget):
 
     def end_game(self):
         """End the game and calculate final score"""
-        self.timer.stop() 
-        self.game_ended = True
-        self.calculate_territory()
-        final_score = {
-            'black': self.territory_score['black'] + self.captured_black,
-            'white': self.territory_score['white'] + self.captured_white
-        }
-        winner = 'Black' if final_score['black'] > final_score['white'] else 'White'
-        self.move_history.append(f"Game Over!")
-        self.move_history.append(f"Black Score: {final_score['black']}")
-        self.move_history.append(f"White Score: {final_score['white']}")
-        self.move_history.append(f"{winner} wins!")
-        self.update_history()
-        self.update()
+        try:
+            self.timer.stop() 
+            self.game_ended = True
+            self.calculate_territory()
+            
+            # Create semi-transparent overlay
+            overlay = QWidget(self)
+            overlay.setGeometry(self.rect())
+            overlay.setStyleSheet("background-color: rgba(0, 0, 0, 0.65);")
+            overlay.show()
+            
+            final_score = {
+                'black': self.territory_score['black'] + self.captured_black,
+                'white': self.territory_score['white'] + self.captured_white
+            }
+            
+            # Determine winner
+            if self.black_time <= 0:
+                winner = 'White'
+            elif self.white_time <= 0:
+                winner = 'Black'
+            else:
+                winner = 'Black' if final_score['black'] > final_score['white'] else 'White'
+            
+            # Create and show end game overlay
+            self.end_game_overlay = EndGameOverlay(
+                winner=winner,
+                final_score=final_score,
+                move_history=self.move_history,
+                parent=self
+            )
+            
+            # Connect buttons with proper cleanup
+            self.end_game_overlay.menu_btn.clicked.connect(
+                lambda: [
+                    overlay.deleteLater(),
+                    self.end_game_overlay.deleteLater(),
+                    self.back_btn.clicked.emit()
+                ]
+            )
+            
+            self.end_game_overlay.replay_btn.clicked.connect(
+                lambda: [
+                    overlay.deleteLater(),
+                    self.reset_board()
+                ]
+            )
+            
+            self.end_game_overlay.show()
+            
+        except Exception as e:
+            print(f"Error in end_game: {e}")
+            import traceback
+            traceback.print_exc()
+
+
+    def preview_move(self, move_index):
+        """Preview the board state at a specific move"""
+        try:
+            # Save current state
+            self.current_preview = move_index
+            
+            # Reset board to initial state
+            self.board_state = [[None for _ in range(self.board_size)] for _ in range(self.board_size)]
+            
+            # Replay moves up to selected index
+            for i in range(move_index + 1):
+                if i < len(self.move_history):
+                    move = self.move_history[i]
+                    # Parse move text (format: "● Black: A1" or "○ White: B2")
+                    try:
+                        # Extract coordinates from move text
+                        parts = move.split(': ')[1]
+                        col = ord(parts[0]) - ord('A')
+                        row = int(parts[1:]) - 1
+                        color = 'black' if '●' in move else 'white'
+                        
+                        # Apply move
+                        self.board_state[row][col] = color
+                    except:
+                        # Skip non-move entries (like "Game Over!")
+                        continue
+            
+            # Update display
+            self.update_board()
+            
+        except Exception as e:
+            print(f"Error in preview_move: {e}")
+            import traceback
+            traceback.print_exc()
 
     def setup_connections(self):
         """Set up button connections"""
@@ -681,20 +758,48 @@ class GoBoard(QWidget):
 
     def reset_board(self):
         """Reset the board state"""
-        self.board_state = [[None for _ in range(self.board_size)] for _ in range(self.board_size)]
-        self.current_player = 'black'
-        self.last_move = None
-        self.captured_black = 0
-        self.captured_white = 0
-        self.move_history.clear()
-        # Reset timers
-        self.black_time = 30 * 60
-        self.white_time = 30 * 60
-        self.timer.start()
-        self.update_timer_labels()
-        self.update_history()
-        self.update_labels()
-        self.update()
+        try:
+            # First remove the overlay if it exists
+            if hasattr(self, 'end_game_overlay'):
+                self.end_game_overlay.deleteLater()
+                delattr(self, 'end_game_overlay')
+            
+            # Reset board state
+            self.board_state = [[None for _ in range(self.board_size)] for _ in range(self.board_size)]
+            self.territory = [[None for _ in range(self.board_size)] for _ in range(self.board_size)]
+            
+            # Reset game variables
+            self.current_player = 'black'
+            self.last_move = None
+            self.captured_black = 0
+            self.captured_white = 0
+            self.move_history.clear()
+            self.game_ended = False
+            
+            # Get timer duration from settings (in minutes) and convert to seconds
+            timer_duration = self.parent().parent().settings['timer_minutes'] * 60
+            
+            # Reset timers with settings value
+            self.black_time = timer_duration
+            self.white_time = timer_duration
+            
+            if hasattr(self, 'timer'):
+                self.timer.stop()
+            self.timer.start(1000)
+            
+            # Update UI
+            self.update_timer_labels()
+            self.update_history()
+            self.update_labels()
+            self.update_board()
+            
+            # Force a complete repaint
+            self.repaint()
+            
+        except Exception as e:
+            print(f"Error in reset_board: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 
@@ -745,11 +850,25 @@ class GoBoard(QWidget):
         winner = "White" if self.black_time <= 0 else "Black"
         self.move_history.append(f"Time Out! {winner} wins!")
         self.update_history()
+        
+        # Calculate final scores and show end game overlay
+        self.end_game()  # Add this line to show the end game overlay
 
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
             self.close()
+
+    def set_timer_duration(self, minutes):
+        """Set the timer duration for both players"""
+        try:
+            # Convert minutes to seconds
+            duration = minutes * 60
+            self.black_time = duration
+            self.white_time = duration
+            self.update_timer_labels()
+        except Exception as e:
+            print(f"Error setting timer duration: {e}")
 
 
     

@@ -99,6 +99,7 @@ class GoGame(QMainWindow):
                 # Create new board
                 new_board = GoBoard()
                 new_board.set_board_size(self.settings['board_size'])
+                new_board.set_timer_duration(self.settings['timer_minutes'])  # Add this line
                 new_board.set_player_info(
                     player1_name=player1_info[0],
                     player2_name=player2_info[0]
@@ -172,14 +173,7 @@ class GoGame(QMainWindow):
     def handle_board_back(self):
         """Handle back button click from game board"""
         try:
-            # If in fullscreen, return to normal window mode first
-            if self.isFullScreen():
-                self.showNormal()
-                self.settings['fullscreen'] = False
-                self.settings['window_fullscreen'] = False
-                self.settings['normal_window'] = True
-            
-            # Show main menu
+            # Simply show main menu without changing window mode
             self.show_main_menu()
             
         except Exception as e:
