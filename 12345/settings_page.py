@@ -226,7 +226,7 @@ class SettingsPage(QWidget):
         self.window_mode_group.addButton(self.normal_window_radio)
         
         # Set default selection
-        self.normal_window_radio.setChecked(True)
+        self.fullscreen_radio.setChecked(True)
 
         # Theme Selection
         theme_container = QHBoxLayout()

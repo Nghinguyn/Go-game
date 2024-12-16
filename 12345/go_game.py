@@ -17,15 +17,16 @@ class GoGame(QMainWindow):
             self.player2_color = "white"
             
             self.setWindowTitle("Go Game")
-            self.setGeometry(100, 100, 1024, 768)
+            # Remove this line since we're going fullscreen
+            # self.setGeometry(100, 100, 1024, 768)
             
-            # Initialize settings
+            # Initialize settings with fullscreen as default
             self.settings = {
                 'board_size': 9,
                 'timer_minutes': 30,
-                'fullscreen': False,
+                'fullscreen': True,  # Changed from False
                 'window_fullscreen': False,
-                'normal_window': True
+                'normal_window': False  # Changed from True
             }
 
             # Create stacked widget
@@ -38,6 +39,9 @@ class GoGame(QMainWindow):
 
             # Keep track of current board
             self.current_board = None
+
+            # Start in fullscreen mode
+            self.showFullScreen()
 
         except Exception as e:
             print(f"Error in initialization: {e}")
