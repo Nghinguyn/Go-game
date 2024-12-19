@@ -38,36 +38,32 @@ class BoardCanvas(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Draw board background
-        painter.fillRect(self.rect(), QColor(styles.COLORS['board_brown']))
-
         # Calculate board dimensions
-        margin = self.go_board.board_margin
-        board_size = min(self.width(), self.height()) - 2 * margin
-        cell_size = board_size // (self.go_board.board_size - 1)
-        total_board_size = cell_size * (self.go_board.board_size - 1)
-        
-        # Center the board
-        start_x = (self.width() - total_board_size) // 2
-        start_y = (self.height() - total_board_size) // 2
-        
-        # Store these values for other methods
-        self.cell_size = cell_size
-        self.start_x = start_x
-        self.start_y = start_y
+        total_board_size = self.cell_size * (self.go_board.board_size - 1)
+        self.start_x = (self.width() - total_board_size) // 2
+        self.start_y = (self.height() - total_board_size) // 2
 
-        # Draw grid lines
-        pen = QPen(QColor(styles.COLORS['board_lines']))
-        pen.setWidth(1)
-        painter.setPen(pen)
+        # Draw board background
+        painter.fillRect(self.rect(), QColor('#DCB35C'))
 
-        # Draw coordinates and grid lines
-        self._draw_coordinates(painter, start_x, start_y, cell_size, total_board_size)
-        self._draw_grid_lines(painter, start_x, start_y, total_board_size)
-        self._draw_star_points(painter, start_x, start_y, cell_size)
-        self._draw_stones(painter, start_x, start_y, cell_size)
-        self._draw_hover_stone(painter, start_x, start_y, cell_size)
-        self._draw_territory_markers(painter, start_x, start_y, cell_size)
+        # Set up pen for grid lines
+        painter.setPen(QPen(QColor(styles.COLORS['board_lines']), 1))
+
+        # Draw the board elements in order
+        self._draw_coordinates(painter, self.start_x, self.start_y, self.cell_size, total_board_size)
+        self._draw_grid_lines(painter, self.start_x, self.start_y, total_board_size)
+        self._draw_star_points(painter, self.start_x, self.start_y, self.cell_size)
+        
+        # Draw territory markers if game has ended
+        if self.go_board.game_ended:
+            self._draw_territory_markers(painter, self.start_x, self.start_y, self.cell_size)
+        
+        # Draw stones
+        self._draw_stones(painter, self.start_x, self.start_y, self.cell_size)
+        
+        # Draw hover stone (only if game is not ended)
+        if not self.go_board.game_ended:
+            self._draw_hover_stone(painter, self.start_x, self.start_y, self.cell_size)
 
     def _draw_coordinates(self, painter, start_x, start_y, cell_size, total_board_size):
         painter.setPen(QPen(QColor('#000000')))

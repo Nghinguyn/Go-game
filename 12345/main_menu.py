@@ -1,33 +1,45 @@
-from PyQt6.QtCore import QTimer, QPropertyAnimation, QPoint, QEasingCurve, Qt, QObject
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QLabel, QFrame
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import QTimer, QPropertyAnimation, QPoint, QEasingCurve, Qt, QObject, pyqtProperty
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, QFrame,
+                            QDialog, QScrollArea)
+from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont
 import random
 
-class Stone(QObject):  # Add this import: from PyQt6.QtCore import 
+class Stone(QObject):
     def __init__(self, x, y, color, alpha=255):
         super().__init__()
-        self._x = x
-        self._y = y
+        self._pos = QPoint(x, y)
         self.color = color
         self.alpha = alpha
         self.animation = None
 
+    @pyqtProperty(QPoint)
+    def pos(self):
+        return self._pos
+
+    @pos.setter
+    def pos(self, value):
+        self._pos = value
+
+    # Add x and y properties with setters
     @property
     def x(self):
-        return self._x
+        return self._pos.x()
 
     @x.setter
     def x(self, value):
-        self._x = value
+        self._pos = QPoint(value, self._pos.y())
 
     @property
     def y(self):
-        return self._y
+        return self._pos.y()
 
     @y.setter
     def y(self, value):
-        self._y = value
+        self._pos = QPoint(self._pos.x(), value)
+
+    # Method to update position
+    def set_position(self, x, y):
+        self._pos = QPoint(x, y)
 
 class MainMenu(QWidget):
     def __init__(self):
@@ -66,15 +78,13 @@ class MainMenu(QWidget):
             
             # Create animation for the stone
             animation = QPropertyAnimation(stone, b"pos")
-            animation.setDuration(1500)  # 1.5 seconds for movement
-            animation.setStartValue(QPoint(stone.x, stone.y))
+            animation.setDuration(1500)
+            animation.setStartValue(stone.pos)
             animation.setEndValue(QPoint(new_x, new_y))
             animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
             
             # Update stone position when animation is finished
-            def update_pos(new_pos, stone=stone):
-                stone.x = new_pos.x()
-                stone.y = new_pos.y()
+            def update_pos(new_pos):
                 self.update()  # Trigger repaint
             
             animation.valueChanged.connect(update_pos)
@@ -113,8 +123,9 @@ class MainMenu(QWidget):
             else:
                 painter.setPen(Qt.PenStyle.NoPen)
             
+            pos = stone.pos  # Use the pos property
             painter.drawEllipse(
-                QPoint(int(stone.x), int(stone.y)),
+                pos,
                 self.stone_radius,
                 self.stone_radius
             )
@@ -123,8 +134,9 @@ class MainMenu(QWidget):
         super().resizeEvent(event)
         # Adjust stone positions when window is resized
         for stone in self.stones:
-            stone.x = min(stone.x, self.width())
-            stone.y = min(stone.y, self.height())
+            new_x = min(stone.x, self.width())
+            new_y = min(stone.y, self.height())
+            stone.set_position(new_x, new_y)
 
 
     def init_ui(self):
@@ -154,6 +166,27 @@ class MainMenu(QWidget):
         title.setStyleSheet("color: white;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        # Create "How to Play" as a clickable label
+        self.how_to_play_label = QLabel("How to Play")
+        self.how_to_play_label.setFont(QFont('Time New Roman', 24))
+        # Add underline to the font
+        font = self.how_to_play_label.font()
+        font.setUnderline(True)
+        self.how_to_play_label.setFont(font)
+        self.how_to_play_label.setStyleSheet("""
+            QLabel {
+                color: #3498db;
+                padding: 5px;
+            }
+            QLabel:hover {
+                color: white;
+            }
+        """)
+        self.how_to_play_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.how_to_play_label.mousePressEvent = self.show_how_to_play
+        # Make the label interactive
+        self.how_to_play_label.setCursor(Qt.CursorShape.PointingHandCursor)
+
         # Create buttons
         self.start_btn = self.create_menu_button("Start Game")
         self.settings_btn = self.create_menu_button("Settings")
@@ -162,7 +195,8 @@ class MainMenu(QWidget):
         # Add widgets to menu layout
         menu_layout.addWidget(title)
         menu_layout.addSpacing(20)
-        menu_layout.addWidget(self.start_btn)
+        menu_layout.addWidget(self.how_to_play_label)  # Add How to Play text first
+        menu_layout.addWidget(self.start_btn)          # Then Start Game button
         menu_layout.addWidget(self.settings_btn)
         menu_layout.addWidget(self.exit_btn)
 
@@ -170,6 +204,15 @@ class MainMenu(QWidget):
         main_layout.addStretch(1)
         main_layout.addWidget(menu_container)
         main_layout.addStretch(1)
+
+    def show_how_to_play(self, event=None):  # Add event parameter for mousePressEvent
+        self.rules_dialog = HowToPlayDialog()
+        # Center the dialog on the screen
+        screen = self.screen().geometry()
+        self.rules_dialog.move(
+            screen.center() - self.rules_dialog.rect().center()
+        )
+        self.rules_dialog.show()
 
     def create_menu_button(self, text):
         button = QPushButton(text)
@@ -189,3 +232,79 @@ class MainMenu(QWidget):
             }
         """)
         return button
+    
+    
+class HowToPlayDialog(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("How to Play Go")
+        self.setFixedSize(600, 500)
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #2C3E50;
+                color: white;
+            }
+            QLabel {
+                padding: 10px;
+                font-size: 14px;
+            }
+            QPushButton {
+                background-color: #3498db;
+                border: none;
+                border-radius: 5px;
+                padding: 10px;
+                min-width: 100px;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        # Title
+        title = QLabel("How to Play Go")
+        title.setFont(QFont('Segoe UI', 24, QFont.Weight.Bold))
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Rules text
+        rules_text = """
+        <h3>Basic Rules:</h3>
+        <p>1. Players take turns placing stones on board intersections</p>
+        <p>2. Black plays first</p>
+        <p>3. Stones must have at least one liberty (empty adjacent intersection) to survive</p>
+        
+        <h3>Capturing Stones:</h3>
+        <p>• Surround opponent's stones completely to capture them</p>
+        <p>• Captured stones are removed from the board</p>
+        
+        <h3>Game End:</h3>
+        <p>• Game ends when both players pass consecutively</p>
+        <p>• Territory is counted: empty intersections surrounded by your stones</p>
+        <p>• Winner has the most territory plus captured stones</p>
+        
+        <h3>Controls:</h3>
+        <p>• Click to place stones</p>
+        <p>• Use the Pass button when you can't/don't want to move</p>
+        <p>• Timer shows remaining time for each player</p>
+        """
+
+        rules_label = QLabel(rules_text)
+        rules_label.setWordWrap(True)
+        rules_label.setTextFormat(Qt.TextFormat.RichText)
+
+        # Close button
+        close_btn = QPushButton("Got it!")
+        close_btn.clicked.connect(self.close)
+        close_btn.setFixedWidth(200)
+
+        # Add widgets to layout
+        layout.addWidget(title)
+        layout.addWidget(rules_label)
+        layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch()
+
+        self.setLayout(layout)

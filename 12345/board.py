@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-                            QLabel, QFrame, QGridLayout, QListWidget, QGraphicsDropShadowEffect, QGraphicsBlurEffect)
+                            QLabel, QFrame, QGridLayout, QListWidget, QGraphicsDropShadowEffect, 
+                            QGraphicsBlurEffect, QDialog, QMessageBox)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from board_canvas import BoardCanvas
@@ -262,7 +263,12 @@ class GoBoard(QWidget):
     def make_move(self, x, y):
         """Handle making a move"""
         try:
-            # Check if it's the correct player's turn
+            # First check if there are any valid moves
+            if not self.check_for_valid_moves():
+                self.handle_no_moves()
+                return False
+                
+            # Rest of the existing make_move code...
             if self.move_history and self.move_history[-1].startswith('●' if self.current_player == 'black' else '○'):
                 return False
             
@@ -290,9 +296,14 @@ class GoBoard(QWidget):
             
             # Switch player and update UI
             self.switch_player()
+            
+            # Check if next player has valid moves
+            if not self.check_for_valid_moves():
+                self.handle_no_moves()
+            
             self.update_history()
             self.update_labels()
-            self.update_board()  # Add this line
+            self.update_board()
             
             return True
             
@@ -300,7 +311,65 @@ class GoBoard(QWidget):
             print(f"Error in make_move: {e}")
             self.board_state[y][x] = None
             return False
+        
+        
+        
+    def check_for_valid_moves(self):
+        """Check if there are any valid moves available for the current player"""
+        for y in range(self.board_size):
+            for x in range(self.board_size):
+                if self.board_state[y][x] is None and self.is_valid_move(x, y):
+                    return True
+        return False
 
+    def handle_no_moves(self):
+        """Handle the situation when no moves are available"""
+        dialog = NoMovesDialog(self)
+        result = dialog.exec()
+        
+        if result == QDialog.DialogCode.Accepted:  # Skip turn
+            self.pass_turn()
+            # Check if opponent also has no moves
+            if not self.check_for_valid_moves():
+                self.show_game_over_message("no_moves")
+        else:  # Give up
+            winner = "White" if self.current_player == "black" else "Black"
+            self.show_game_over_message("give_up", winner)
+
+    def show_game_over_message(self, reason, winner=None):
+        """Show game over message with the reason"""
+        msg = QMessageBox(self)
+        msg.setStyleSheet("""
+            QMessageBox {
+                background-color: #2C3E50;
+                color: white;
+            }
+            QMessageBox QLabel {
+                color: white;
+            }
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 8px 15px;
+                min-width: 80px;
+            }
+        """)
+        
+        msg.setWindowTitle("Game Over")
+        
+        if reason == "no_moves":
+            msg.setText("Game Over - No Valid Moves Remaining")
+            msg.setInformativeText("Neither player can make a valid move. The game will now end.")
+        elif reason == "give_up":
+            msg.setText(f"Game Over - {self.current_player.capitalize()} Gave Up")
+            msg.setInformativeText(f"{winner} wins the game!")
+        
+        msg.exec()
+        self.end_game()
+    
+    
     def create_button_container(self):
         container = QFrame()
         container.setObjectName("buttonContainer")
@@ -329,26 +398,26 @@ class GoBoard(QWidget):
         
         # Style buttons
         button_style = """
-            QPushButton {
-                background-color: %s;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                padding: 15px 30px;
-                font-size: 14px;
-                font-weight: bold;
-                min-width: 150px;
-                text-align: center;
-            }
-            QPushButton:hover {
-                background-color: %s;
-                transform: translateY(-2px);
-            }
-            QPushButton:pressed {
-                background-color: %s;
-                transform: translateY(1px);
-            }
-        """
+                    QPushButton {
+                        background-color: %s;
+                        color: white;
+                        border: none;
+                        border-radius: 8px;
+                        padding: 15px 30px;
+                        font-size: 14px;
+                        font-weight: bold;
+                        min-width: 150px;
+                        text-align: center;
+                    }
+                    QPushButton:hover {
+                        background-color: %s;
+                        margin-top: 2px;    
+                    }
+                    QPushButton:pressed {
+                        background-color: %s;
+                        margin-top: -1px;   
+                    }
+                """
         
         # Back button (Red)
         self.back_btn.setStyleSheet(button_style % ('#E74C3C', '#C0392B', '#922B21'))
@@ -576,6 +645,8 @@ class GoBoard(QWidget):
         try:
             self.timer.stop() 
             self.game_ended = True
+            
+            # Calculate territory
             self.calculate_territory()
             
             # Create semi-transparent overlay
@@ -604,6 +675,9 @@ class GoBoard(QWidget):
                 move_history=self.move_history,
                 parent=self
             )
+            
+            # Update the board display to show territory
+            self.update_board()
             
             # Connect buttons with proper cleanup
             self.end_game_overlay.menu_btn.clicked.connect(
@@ -805,10 +879,27 @@ class GoBoard(QWidget):
 
     def check_game_end(self):
         """Check if the game should end"""
+        # Check for consecutive passes
         if len(self.move_history) >= 2:
             if self.move_history[-1].endswith("passed") and self.move_history[-2].endswith("passed"):
                 self.end_game()
                 return True
+                
+        # Check if no valid moves are left
+        valid_moves_exist = False
+        for y in range(self.board_size):
+            for x in range(self.board_size):
+                if self.board_state[y][x] is None and self.is_valid_move(x, y):
+                    valid_moves_exist = True
+                    break
+            if valid_moves_exist:
+                break
+                
+        if not valid_moves_exist:
+            self.move_history.append("No valid moves remaining")
+            self.end_game()
+            return True
+            
         return False
     
 
@@ -871,6 +962,54 @@ class GoBoard(QWidget):
             print(f"Error setting timer duration: {e}")
 
 
+    
+class NoMovesDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("No More Moves")
+        self.setFixedSize(300, 150)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #2C3E50;
+                border-radius: 10px;
+            }
+            QLabel {
+                color: white;
+                font-size: 14px;
+            }
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 8px 15px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        
+        layout = QVBoxLayout()
+        
+        # Message
+        message = QLabel("No more valid moves available.\nWhat would you like to do?")
+        message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        skip_btn = QPushButton("Skip Turn")
+        give_up_btn = QPushButton("Give Up")
+        
+        skip_btn.clicked.connect(self.accept)  # Dialog result = Accept
+        give_up_btn.clicked.connect(self.reject)  # Dialog result = Reject
+        
+        button_layout.addWidget(skip_btn)
+        button_layout.addWidget(give_up_btn)
+        
+        layout.addWidget(message)
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
     
 
 
