@@ -268,7 +268,10 @@ class GoBoard(QWidget):
                 self.handle_no_moves()
                 return False
                 
-            # Rest of the existing make_move code...
+
+            if not self.handle_detection(x, y):
+                return False
+        
             if self.move_history and self.move_history[-1].startswith('●' if self.current_player == 'black' else '○'):
                 return False
             
@@ -324,50 +327,20 @@ class GoBoard(QWidget):
 
     def handle_no_moves(self):
         """Handle the situation when no moves are available"""
-        dialog = NoMovesDialog(self)
-        result = dialog.exec()
-        
-        if result == QDialog.DialogCode.Accepted:  # Skip turn
+        # Skip the dialog and directly handle game end
+        if not self.check_for_valid_moves():
+            self.end_game()  # This will show the end game overlay
+        else:
             self.pass_turn()
-            # Check if opponent also has no moves
-            if not self.check_for_valid_moves():
-                self.show_game_over_message("no_moves")
-        else:  # Give up
-            winner = "White" if self.current_player == "black" else "Black"
-            self.show_game_over_message("give_up", winner)
 
     def show_game_over_message(self, reason, winner=None):
-        """Show game over message with the reason"""
-        msg = QMessageBox(self)
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: #2C3E50;
-                color: white;
-            }
-            QMessageBox QLabel {
-                color: white;
-            }
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 8px 15px;
-                min-width: 80px;
-            }
-        """)
-        
-        msg.setWindowTitle("Game Over")
-        
+        """Show game over with the end game overlay"""
         if reason == "no_moves":
-            msg.setText("Game Over - No Valid Moves Remaining")
-            msg.setInformativeText("Neither player can make a valid move. The game will now end.")
+            self.move_history.append("Game Over - No Valid Moves Remaining")
         elif reason == "give_up":
-            msg.setText(f"Game Over - {self.current_player.capitalize()} Gave Up")
-            msg.setInformativeText(f"{winner} wins the game!")
+            self.move_history.append(f"Game Over - {self.current_player.capitalize()} Gave Up")
         
-        msg.exec()
-        self.end_game()
+        self.end_game()  # This will show the proper end game overlay
     
     
     def create_button_container(self):
@@ -450,11 +423,15 @@ class GoBoard(QWidget):
             current_name = self.player1_name if self.current_player == "black" else self.player2_name
             self.current_player_label.setText(f"Current Player: {current_name}")
             
-            # Update player info
+            # Calculate total scores including territory
+            black_total = self.captured_black + (self.territory_score.get('black', 0))
+            white_total = self.captured_white + (self.territory_score.get('white', 0))
+            
+            # Update player info with total scores
             self.player1_name_label.setText(f"● Black: {self.player1_name}")
             self.player2_name_label.setText(f"○ White: {self.player2_name}")
-            self.player1_captures_label.setText(f"Captures: {self.captured_black}")
-            self.player2_captures_label.setText(f"Captures: {self.captured_white}")
+            self.player1_captures_label.setText(f"Points: {black_total}")
+            self.player2_captures_label.setText(f"Points: {white_total}")
         except Exception as e:
             print(f"Error updating labels: {e}")
 
@@ -646,19 +623,24 @@ class GoBoard(QWidget):
             self.timer.stop() 
             self.game_ended = True
             
-            # Calculate territory
+            # Calculate territory and captures
             self.calculate_territory()
+            
+            # Calculate final score including both territory and captures
+            final_score = {
+                'black': self.territory_score['black'] + self.captured_black,
+                'white': self.territory_score['white'] + self.captured_white
+            }
+            
+            # Update the display scores to match
+            self.player1_captures_label.setText(f"Points: {final_score['black']}")
+            self.player2_captures_label.setText(f"Points: {final_score['white']}")
             
             # Create semi-transparent overlay
             overlay = QWidget(self)
             overlay.setGeometry(self.rect())
             overlay.setStyleSheet("background-color: rgba(0, 0, 0, 0.65);")
             overlay.show()
-            
-            final_score = {
-                'black': self.territory_score['black'] + self.captured_black,
-                'white': self.territory_score['white'] + self.captured_white
-            }
             
             # Determine winner
             if self.black_time <= 0:
@@ -668,10 +650,10 @@ class GoBoard(QWidget):
             else:
                 winner = 'Black' if final_score['black'] > final_score['white'] else 'White'
             
-            # Create and show end game overlay
+            # Create and show end game overlay with the same final score
             self.end_game_overlay = EndGameOverlay(
                 winner=winner,
-                final_score=final_score,
+                final_score=final_score,  # Using the same final score
                 move_history=self.move_history,
                 parent=self
             )
@@ -901,6 +883,27 @@ class GoBoard(QWidget):
             return True
             
         return False
+    
+
+    def handle_detection(self, x, y):
+        """Handle move validation and show appropriate messages"""
+        if not (0 <= x < self.board_size and 0 <= y < self.board_size):
+            self.show_detection_popup("Invalid move: Outside board boundaries!")
+            return False
+            
+        if self.board_state[y][x] is not None:
+            self.show_detection_popup("Invalid move: Space already occupied!")
+            return False
+            
+        # Check for suicide move
+        self.board_state[y][x] = self.current_player
+        if self.get_liberties(x, y) == 0 and not self.check_captures(x, y):
+            self.board_state[y][x] = None
+            self.show_detection_popup("Invalid move: Suicide move not allowed!")
+            return False
+        self.board_state[y][x] = None
+            
+        return True
     
 
 
